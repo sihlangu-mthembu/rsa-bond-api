@@ -1,0 +1,10 @@
+# Render Blueprint: New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: rsa-bond-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: BOND_API_DB
+        value: /tmp/quotes.db      # free plan has no persistent disk: saved quotes reset on restart
