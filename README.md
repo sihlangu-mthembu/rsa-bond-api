@@ -21,6 +21,8 @@ A REST API for South African government bond analytics, built with **FastAPI** a
 
 Interactive documentation is generated automatically at `/docs`.
 
+**Live API:** https://rsa-bond-api.onrender.com/docs (free host: the first request after a quiet spell takes about a minute while it wakes up).
+
 Example:
 
 ```bash
