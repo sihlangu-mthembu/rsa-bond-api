@@ -1,3 +1,4 @@
 fastapi>=0.110
 uvicorn[standard]>=0.27
 rsabond @ git+https://github.com/sihlangu-mthembu/rsa-bond-calculator@main
+psycopg[binary]>=3.1      # PostgreSQL driver, used only when DATABASE_URL is set

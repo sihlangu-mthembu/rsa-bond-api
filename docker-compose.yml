@@ -1,0 +1,25 @@
+# Run the API with PostgreSQL:  docker compose up --build   then open http://localhost:8000/docs
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bonds
+    volumes:
+      - pgdata:/var/lib/postgresql/data      # quotes survive restarts
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      retries: 10
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/bonds
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

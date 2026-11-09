@@ -1,4 +1,5 @@
-"""RSA Bond API: a REST API over the rsabond library, with SQLite storage for yield quotes.
+"""RSA Bond API: a REST API over the rsabond library, with SQLite or PostgreSQL storage for yield quotes
+and a sourced table of SARB repo rate decisions.
 
 Run locally:  uvicorn app.main:app --reload     then open http://127.0.0.1:8000/docs
 """
@@ -18,14 +19,26 @@ from rsabond import (
     yield_from_price,
 )
 
-from . import db
-from .schemas import BondOut, CashFlow, PriceOut, QuoteIn, QuoteOut, ScheduleOut, YieldOut
+from . import db, rates
+from .schemas import (
+    BondOut,
+    CashFlow,
+    PriceOut,
+    QuoteIn,
+    QuoteOut,
+    RepoChangeOut,
+    RepoHistoryOut,
+    RepoRateOut,
+    ScheduleOut,
+    YieldOut,
+)
 
 app = FastAPI(
     title="RSA Bond API",
-    version="0.1.0",
+    version="0.2.0",
     description="Coupon schedules, accrued interest, prices and yields for South African government bonds, "
-                "plus storage for yield quotes. Prices approximate, but are not identical to, JSE formulas.",
+                "plus storage for yield quotes and the SARB repo rate history. "
+                "Prices approximate, but are not identical to, JSE formulas.",
 )
 
 # Allow a browser front end (Project 3) hosted on another domain to call this API.
@@ -41,7 +54,7 @@ def _bond_or_404(code: str):
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "database": db.backend()}
 
 
 @app.get("/bonds", response_model=list[BondOut])
@@ -108,6 +121,36 @@ def read_quote(quote_id: int):
 def remove_quote(quote_id: int):
     if not db.delete_quote(quote_id):
         raise HTTPException(status_code=404, detail="Quote not found")
+
+
+@app.get("/rates/repo", response_model=RepoRateOut)
+def read_repo_rate(on: date | None = Query(None, description="Date, YYYY-MM-DD; omit for the latest decision")):
+    """The SARB repo rate (and prime) in force on a date, with the decision that set it and its source."""
+    if on is not None and on > rates.DATA_AS_OF:
+        raise HTTPException(status_code=422,
+                            detail=f"Repo rate data is only checked up to {rates.DATA_AS_OF.isoformat()}")
+    try:
+        change = rates.rate_on(on or rates.DATA_AS_OF)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    return RepoRateOut(on=on, repo_rate_percent=change.rate_percent,
+                       prime_rate_percent=change.rate_percent + rates.PRIME_SPREAD,
+                       decision=_change_out(change), data_as_of=rates.DATA_AS_OF)
+
+
+@app.get("/rates/repo/history", response_model=RepoHistoryOut)
+def read_repo_history():
+    """Every repo rate change in the table, oldest first. Meetings that left the rate unchanged are omitted."""
+    return RepoHistoryOut(
+        data_as_of=rates.DATA_AS_OF,
+        note="Changes only; decisions that held the rate are omitted. Official figures: https://www.resbank.co.za",
+        changes=[_change_out(c) for c in rates.REPO_CHANGES],
+    )
+
+
+def _change_out(c: rates.RepoChange) -> RepoChangeOut:
+    return RepoChangeOut(announced=c.announced, repo_rate_percent=c.rate_percent,
+                         change_bp=rates.change_bp(c), source=c.source)
 
 
 def _bond_out(b) -> BondOut:

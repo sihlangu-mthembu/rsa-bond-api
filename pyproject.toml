@@ -1,7 +1,7 @@
 [project]
 name = "rsa-bond-api"
-version = "0.1.0"
-description = "REST API for South African government bond analytics (FastAPI + SQLite)"
+version = "0.2.0"
+description = "REST API for South African government bond analytics (FastAPI + PostgreSQL/SQLite)"
 requires-python = ">=3.10"
 authors = [{ name = "Sihlangu Mthembu" }]
 license = { text = "MIT" }

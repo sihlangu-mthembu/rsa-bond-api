@@ -26,17 +26,29 @@ A **REST API** lets other programs (a website, a spreadsheet, another service) a
 
 ## `app/db.py`: the database
 
-- Uses SQLite, a database stored in a single file, through Python's built-in `sqlite3`.
-- `connect()` is a **context manager** (`with connect() as conn:`): it opens the connection, creates the table if it doesn't exist, commits on success and always closes the connection, even after an error.
-- `row_factory = sqlite3.Row` lets rows be converted to dictionaries.
+- Two back ends, chosen by environment variable: if `DATABASE_URL` is set, **PostgreSQL** (a database server) through the `psycopg` 3 driver; otherwise **SQLite**, a database stored in a single file, through Python's built-in `sqlite3`.
+- The SQL is written once. The small `_Conn` wrapper swaps SQLite's `?` placeholders for PostgreSQL's `%s`, and the only schema difference is how the `id` column counts up (`AUTOINCREMENT` vs `GENERATED ALWAYS AS IDENTITY`).
+- `INSERT ... RETURNING *` gives back the new row in one round trip; both databases support it.
+- `psycopg` is imported inside `connect()`, so a SQLite-only run never needs it.
+- `connect()` is a **context manager** (`with connect() as conn:`): it opens the connection, creates the table if it doesn't exist, commits on success, rolls back on an error and always closes the connection.
+- `row_factory` (`sqlite3.Row`, or psycopg's `dict_row`) lets rows be converted to dictionaries.
 - Every query uses `?` **placeholders** with values passed separately. This prevents **SQL injection**, where a malicious input like `'; DROP TABLE quotes; --` would otherwise be run as SQL.
 - The database path comes from the `BOND_API_DB` environment variable, so tests and production use different files.
 
+## `app/rates.py`: the repo rate table
+
+- `REPO_CHANGES` lists each Monetary Policy Committee decision that **changed** the repo rate since March 2023: the announcement date, the new rate and the report it was checked against. Holds are left out because the rate in force doesn't change.
+- `rate_on(day)` walks the table and returns the last decision on or before that day. Before the first row it raises `ValueError`, which the endpoint turns into a 422.
+- `DATA_AS_OF` records when the table was last checked. The endpoint refuses later dates instead of guessing, because a new decision may have happened since.
+- Prime is repo + 3.5 percentage points, the South African banks' convention.
+
+*Likely questions:* "Why not scrape the SARB website?" (a hard-coded, sourced table is predictable and testable; scraping breaks when the page changes. A scheduled job that opens a pull request after each MPC meeting would be the next step.)
+
 ## `tests/test_api.py`: the tests
 
-- A **pytest fixture** (`client`) gives every test a fresh `TestClient` and its own empty database in a temporary folder (`tmp_path`, `monkeypatch.setenv`).
+- A **pytest fixture** (`client`) gives every test a fresh `TestClient` and its own empty database: a new SQLite file in a temporary folder, or, if `TEST_DATABASE_URL` is set, a PostgreSQL table emptied with `TRUNCATE ... RESTART IDENTITY`.
 - `TestClient` sends requests to the app in memory, without starting a server.
-- The tests cover: the health check, listing and sorting bonds, 404s, the final cash flow, a price-to-yield round trip, 422s for bad input, and the full create-read-list-delete cycle for quotes.
+- The tests cover: the health check, listing and sorting bonds, 404s, the final cash flow, a price-to-yield round trip, 422s for bad input, and the full create-read-list-delete cycle for quotes, ordering and filtering, and the repo rate on chosen dates (including the day before and the day of a decision).
 
 ## `Dockerfile`: packaging
 
@@ -44,11 +56,15 @@ Starts from a slim Python image, installs `git` (needed to install the calculato
 
 ## `.github/workflows/tests.yml`: CI
 
-Two jobs on every push: lint and test on Python 3.10 and 3.12, and build the Docker image.
+Three jobs on every push: lint, type-check and test on Python 3.10 and 3.12; run the tests again against a PostgreSQL 16 **service container**; and build the Docker image.
+
+## `docker-compose.yml`
+
+Starts PostgreSQL and the API together, with a named volume so saved quotes survive restarts. The API waits for the database's health check before starting.
 
 ## Ideas to extend it yourself
 
 1. Add a `/bonds/{code}/duration` endpoint.
 2. Add an API key check for `POST` and `DELETE`.
-3. Swap SQLite for Postgres using an environment variable for the connection string.
+3. Add a scheduled GitHub Action that checks for a new MPC decision and opens a pull request to update `app/rates.py`.
 4. Deploy it on Render and add the live link to the README.
