@@ -1,0 +1,19 @@
+[project]
+name = "rsa-bond-api"
+version = "0.1.0"
+description = "REST API for South African government bond analytics (FastAPI + SQLite)"
+requires-python = ">=3.10"
+authors = [{ name = "Sihlangu Mthembu" }]
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# B008: FastAPI's Query(...) defaults in function signatures are the framework's intended style.
+# UP017: datetime.UTC needs Python 3.11; this project supports 3.10.
+ignore = ["B008", "UP017"]
